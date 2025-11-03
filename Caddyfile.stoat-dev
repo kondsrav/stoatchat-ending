@@ -1,0 +1,38 @@
+stoat-dev.zasperhub.com {
+    # Optional: redirect other hostnames to canonical
+    @notCanonical not host stoat-dev.zasperhub.com
+    redir @notCanonical https://stoat-dev.zasperhub.com{uri} permanent
+
+    # API: forward /api/* to API container
+    handle_path /api/* {
+        reverse_proxy api:14702
+    }
+
+    # Events (WebSocket). Accept both /events* and /ws*
+    handle_path /events* {
+        reverse_proxy events:14703
+    }
+
+    handle_path /ws* {
+        reverse_proxy events:14703
+    }
+
+    # Media/backends
+    handle_path /autumn/* {
+        reverse_proxy autumn:14704
+    }
+
+    handle_path /january/* {
+        reverse_proxy january:14705
+    }
+
+    # Health checks
+    handle_path /health* {
+        reverse_proxy api:14702
+    }
+
+    # Serve static SPA and fallback to index.html
+    handle {
+        reverse_proxy frontend:80
+    }
+}

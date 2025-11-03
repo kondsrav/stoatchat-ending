@@ -1,0 +1,166 @@
+version: '3.8'
+
+services:
+
+  # Database
+  database:
+    image: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: revolt
+    volumes:
+      - database_data:/data/db
+    networks:
+      - stoat-network
+
+  # Redis cache
+  redis:
+    image: eqalpha/keydb
+    restart: unless-stopped
+    networks:
+      - stoat-network
+
+  # RabbitMQ message broker
+  rabbit:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbituser
+      RABBITMQ_DEFAULT_PASS: rabbitpass
+    networks:
+      - stoat-network
+
+  # MinIO object storage
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioautumn
+      MINIO_ROOT_PASSWORD: minioautumn
+    volumes:
+      - minio_data:/data
+    networks:
+      - stoat-network
+
+  # Create MinIO buckets
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (mc config host add minio http://minio:9000 minioautumn minioautumn) do echo '...waiting...' && sleep 1; done;
+      mc mb minio/attachments;
+      mc mb minio/avatars;
+      mc mb minio/backgrounds;
+      mc mb minio/banners;
+      mc mb minio/emojis;
+      mc mb minio/icons;
+      exit 0;
+      "
+    networks:
+      - stoat-network
+
+  # Autumn file server
+  autumn:
+    image: ghcr.io/revoltchat/autumn:20250210-1
+    restart: unless-stopped
+    environment:
+      AUTUMN_MONGO_URI: mongodb://database:27017/autumn
+      AUTUMN_S3_ENDPOINT: http://minio:9000
+      AUTUMN_S3_ACCESS_KEY_ID: minioautumn
+      AUTUMN_S3_SECRET_ACCESS_KEY: minioautumn
+      AUTUMN_S3_USE_SSL: "false"
+      AUTUMN_S3_BUCKET_PREFIX: ""
+      AUTUMN_HOST: 0.0.0.0:14704
+    depends_on:
+      - database
+      - minio
+      - createbuckets
+    ports:
+      - "14704:14704"
+    networks:
+      - stoat-network
+
+  # January proxy service
+  january:
+    image: ghcr.io/revoltchat/january:20250210-1
+    restart: unless-stopped
+    environment:
+      JANUARY_HOST: 0.0.0.0:14705
+      JANUARY_THREADS: 1
+    ports:
+      - "14705:14705"
+    networks:
+      - stoat-network
+
+  # Bonfire events service
+  events:
+    image: ghcr.io/revoltchat/bonfire:20250210-1
+    restart: unless-stopped
+    environment:
+      BONFIRE_HOST: 0.0.0.0:14703
+      REVOLT_REDIS_URI: redis://redis:6379
+    depends_on:
+      - redis
+    ports:
+      - "14703:14703"
+    networks:
+      - stoat-network
+
+  # Main API service
+  api:
+    image: kondsrav/stoat-api-production:latest
+    restart: unless-stopped
+    depends_on:
+      - database
+      - redis
+      - rabbit
+    ports:
+      - "14702:14702"
+    volumes:
+      - ./Revolt.toml:/app/Revolt.toml
+    environment:
+      - RUST_LOG=debug,revolt_delta=trace
+      - RUST_BACKTRACE=1
+    networks:
+      - stoat-network
+
+  # Frontend web application
+  frontend:
+    image: kondsrav/stoat-frontend-prod:latest
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    networks:
+      - stoat-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Caddy reverse proxy
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile.stoat-dev:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - stoat-network
+
+volumes:
+  database_data:
+  minio_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  stoat-network:
+    driver: bridge
