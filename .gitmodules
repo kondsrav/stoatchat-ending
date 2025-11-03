@@ -1,0 +1,7 @@
+[submodule "frontend-stoat-new"]
+	path = frontend-stoat-new
+	url = https://github.com/kondsrav/frontend-stoat-new.git
+
+[submodule "stoat-backend-new"]
+	path = stoat-backend-new
+	url = https://github.com/kondsrav/stoat-backend-new.git
