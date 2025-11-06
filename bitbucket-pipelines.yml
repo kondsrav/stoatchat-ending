@@ -1,0 +1,46 @@
+image: docker:24.0.2
+
+options:
+  size: 2x
+
+pipelines:
+  default:
+    - step:
+        name: Build & Push Docker Images (any branch)
+        services:
+          - docker
+        script:
+          # Install docker-compose plugin (needed in Bitbucket container)
+          - mkdir -p /usr/local/lib/docker/cli-plugins
+          - curl -sSL "https://github.com/docker/compose/releases/download/v2.17.2/docker-compose-linux-x86_64" \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          - chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+          # Login to Docker Hub
+          - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+          # Build all images defined in docker-compose.unified.yml
+          - echo "🧱 Building Docker images (any branch: ${BITBUCKET_BRANCH})"
+          - docker compose -f docker-compose.unified.yml build
+
+          # Push them to Docker Hub with same image names/tags
+          - echo "⬆️  Pushing Docker images"
+          - docker compose -f docker-compose.unified.yml push
+
+          - echo "✅ Docker images built & pushed successfully!"
+
+    - step:
+        name: Deploy to EC2 (pull & restart)
+        script:
+          - pipe: atlassian/ssh-run:0.4.1
+            variables:
+              SSH_USER: "${SSH_USER}"
+              SERVER: "${SERVER_IP}"
+              COMMAND: |
+                cd ~/stoatchat-ending
+                echo "🔄 Pulling latest Docker images..."
+                docker compose -f docker-compose.unified.yml pull
+                echo "♻️ Restarting containers..."
+                docker compose -f docker-compose.unified.yml restart
+                echo "✅ Deployment complete!"
+
