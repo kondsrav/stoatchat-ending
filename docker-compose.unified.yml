@@ -41,7 +41,7 @@ services:
       - stoat-network-stable
     entrypoint: >
       sh -c "
-      until (mc config host add minio http://minio:9000 minioautumn minioautumn); do echo '...waiting...' && sleep 1; done;
+      until (mc alias set minio http://minio:9000 minioautumn minioautumn); do echo '...waiting...' && sleep 1; done;
       mc rm -r --force minio/attachments;
       mc mb minio/attachments;
       mc rm -r --force minio/avatars;
@@ -54,12 +54,12 @@ services:
       mc mb minio/banners;
       mc rm -r --force minio/emojis;
       mc mb minio/emojis;
-      mc policy set public minio/attachments;
-      mc policy set public minio/avatars;
-      mc policy set public minio/backgrounds;
-      mc policy set public minio/icons;
-      mc policy set public minio/banners;
-      mc policy set public minio/emojis;
+      mc anonymous set download minio/attachments;
+      mc anonymous set download minio/avatars;
+      mc anonymous set download minio/backgrounds;
+      mc anonymous set download minio/icons;
+      mc anonymous set download minio/banners;
+      mc anonymous set download minio/emojis;
       "
 
   rabbit:
@@ -81,7 +81,7 @@ services:
 
   # Backend services
   api:
-    image: kondsrav/stoat-api-production:latest
+    image: kondsrav/stoat-api-production:file-upload11
     depends_on:
       database:
         condition: service_started
@@ -91,7 +91,7 @@ services:
         condition: service_healthy
     environment:
       - REVOLT_CONFIG_PATH=/Revolt.toml
-      - RUST_LOG=info
+      - RUST_LOG=debug
       - RUST_BACKTRACE=1
     volumes:
       - ./stoat-backend-new/Revolt.toml:/Revolt.toml:ro
@@ -160,7 +160,7 @@ services:
 
   # Frontend service
   frontend:
-    image: kondsrav/stoat-frontend-prod:v24
+    image: kondsrav/stoat-frontend-prod:file-upload20
     depends_on:
       - api
       - events
